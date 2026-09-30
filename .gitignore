@@ -1,0 +1,16 @@
+# Python & Node initial ignores
+.env
+*.env
+!*.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+**/node_modules/
+frontend/dist/
+*.db
+*.sqlite3
+backend/data/
+.DS_Store
+Thumbs.db
