@@ -1,0 +1,2 @@
+# Smart Literature Claim Mapper Root Requirements
+-r backend/requirements.txt
