@@ -81,3 +81,82 @@ class Evidence(Base):
     def __repr__(self):
         return f"<Evidence(evidence_id='{self.evidence_id}', claim_id={self.claim_id})>"
 
+
+class ClaimRelation(Base):
+    __tablename__ = "claim_relations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    relation_id = Column(String(64), unique=True, index=True, nullable=False)
+    source_claim_id = Column(Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_claim_id = Column(Integer, ForeignKey("claims.id", ondelete="CASCADE"), nullable=False, index=True)
+    relation_type = Column(String(32), nullable=False, index=True)  # SUPPORTS, CONTRADICTS, EXTENDS
+    confidence = Column(Float, default=0.85, index=True)
+    evidence_id = Column(Integer, ForeignKey("evidence.id", ondelete="SET NULL"), nullable=True)
+    reasoning = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    source_claim = relationship("Claim", foreign_keys=[source_claim_id], back_populates="outgoing_relations")
+    target_claim = relationship("Claim", foreign_keys=[target_claim_id], back_populates="incoming_relations")
+    evidence = relationship("Evidence", back_populates="relations")
+
+    __table_args__ = (
+        Index("idx_relation_source_target", "source_claim_id", "target_claim_id"),
+        Index("idx_relation_target_source", "target_claim_id", "source_claim_id"),
+        Index("idx_relation_type_conf", "relation_type", "confidence"),
+        Index("idx_relation_src_type", "source_claim_id", "relation_type"),
+        Index("idx_relation_tgt_type", "target_claim_id", "relation_type"),
+    )
+
+    def __repr__(self):
+        return f"<ClaimRelation({self.relation_type}: {self.source_claim_id} -> {self.target_claim_id})>"
+
+
+class Concept(Base):
+    __tablename__ = "concepts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    concept_id = Column(String(64), unique=True, index=True, nullable=False)
+    name = Column(String(256), nullable=False, index=True)
+    category = Column(String(64), default="general")
+    confidence = Column(Float, default=1.0)
+    paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False)
+
+    paper = relationship("Paper", back_populates="concepts")
+
+    def __repr__(self):
+        return f"<Concept(name='{self.name}', cat='{self.category}')>"
+
+
+class Citation(Base):
+    __tablename__ = "citations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False)
+    target_paper_id = Column(Integer, ForeignKey("papers.id", ondelete="SET NULL"), nullable=True)
+    raw_citation = Column(Text, nullable=True)
+    target_title = Column(String(512), nullable=True)
+    target_year = Column(Integer, nullable=True)
+    target_doi = Column(String(128), nullable=True)
+    citation_metadata = Column(Text, nullable=True) # JSON string if needed
+
+    source_paper = relationship("Paper", foreign_keys=[source_paper_id], back_populates="citations_out")
+    target_paper = relationship("Paper", foreign_keys=[target_paper_id])
+
+    def __repr__(self):
+        return f"<Citation(from={self.source_paper_id} to={self.target_paper_id})>"
+
+
+class Annotation(Base):
+    __tablename__ = "annotations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    annotation_id = Column(String(64), unique=True, index=True, nullable=False)
+    target_type = Column(String(32), nullable=False) # 'claim', 'relation'
+    target_id = Column(String(64), nullable=False, index=True)
+    user_action = Column(String(32), nullable=False) # 'verify', 'correct', 'reject', 'note'
+    corrected_value = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Annotation(target={self.target_type}:{self.target_id}, action={self.user_action})>"
