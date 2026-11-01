@@ -200,3 +200,46 @@ class DashboardStatsResponse(BaseModel):
     total_gaps: int
     processing_status: Dict[str, int]
 
+# --- System / AI Configuration ---
+class SystemConfigRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    scraper_api_key: Optional[str] = None
+    scholar_api_key: Optional[str] = None
+    embedding_model: Optional[str] = None
+
+
+class SystemConfigResponse(BaseModel):
+    embedding_model: str
+    retrieval_strategy: str
+    llm_provider: str
+    gemini_configured: bool
+    scraper_configured: bool = False
+    scraper_api_key_masked: Optional[str] = None
+
+
+# --- Gemini Claim Searcher Schemas ---
+class ClaimSearchRequest(BaseModel):
+    claim: str
+    top_k: int = 8
+
+class ClaimSearchMatch(BaseModel):
+    claim_id: str
+    claim_text: str
+    claim_type: str
+    confidence: float
+    paper_title: str
+    paper_year: Optional[int] = None
+    paper_doi: Optional[str] = None
+    section_location: Optional[str] = None
+    evidence_passage: Optional[str] = None
+    relevance_score: float
+    relation_hint: Optional[str] = None  # SUPPORTS / CONTRADICTS / EXTENDS / RELATED
+
+class ClaimSearchResponse(BaseModel):
+    query_claim: str
+    matches: List[ClaimSearchMatch]
+    synthesis: str
+    synthesis_confidence: float
+    model_used: str
+    total_corpus_claims: int
+
