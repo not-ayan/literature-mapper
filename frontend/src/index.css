@@ -1,0 +1,22 @@
+/* Initial AI prototype dark neon theme (pre-redesign) */
+:root {
+  --bg-canvas: #0b0f19;
+  --bg-surface: #111827;
+  --bg-subtle: #1f2937;
+  --border: #2d3748;
+  --text-main: #f9fafb;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent-primary: #7c3aed;
+  --color-supports: #10b981;
+  --color-contradicts: #ef4444;
+  --color-extends: #38bdf8;
+  --radius-md: 10px;
+}
+body { background: var(--bg-canvas); color: var(--text-main); font-family: Inter, sans-serif; margin: 0; }
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar { width: 250px; background: linear-gradient(180deg, #111827, #1e1b4b); padding: 1rem; border-right: 1px solid var(--border); }
+.workspace-wrapper { flex: 1; padding: 1.5rem; }
+.modern-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.25rem; }
+.btn { padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; border: none; font-weight: 600; }
+.btn-primary { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; }
