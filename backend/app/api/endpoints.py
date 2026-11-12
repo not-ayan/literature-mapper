@@ -956,6 +956,273 @@ async def scholarapi_proxy_pdf(
 
 
 # -------------------------------------------------------------
+# 14. Crawler Paper Verification & Cached Ingestion Pipeline
+# -------------------------------------------------------------
+@router.post("/crawler/verify-paper")
+async def verify_candidate_paper(payload: dict):
+    """
+    Downloads and rigorously verifies that a candidate research paper:
+    1. Returns a genuine binary PDF (%PDF)
+    2. Contains a valid text layer with readable characters
+    3. Has valid page structure
+    Caches the verified PDF locally on success for instant zero-latency ingestion.
+    """
+    paper_dict = payload.get("paper") if isinstance(payload.get("paper"), dict) else payload
+    title = (paper_dict.get("title") or payload.get("title") or "Untitled Paper").strip()
+    paper_id = str(paper_dict.get("id") or paper_dict.get("scholar_id") or payload.get("id") or title)
+    doi = (paper_dict.get("doi") or payload.get("doi") or "").strip()
+    pdf_url = (
+        paper_dict.get("best_oa_location", {}).get("pdf_url")
+        if isinstance(paper_dict.get("best_oa_location"), dict)
+        else (paper_dict.get("pdf_url") or payload.get("pdf_url"))
+    )
+    scholar_id = paper_dict.get("scholar_id") or payload.get("scholar_id")
+    source = paper_dict.get("source") or payload.get("source", "")
+    custom_scraper_key = payload.get("scraper_api_key") or os.getenv("SCRAPER_API_KEY", "")
+    custom_scholar_key = payload.get("scholar_api_key") or os.getenv("SCHOLAR_API_KEY", "")
+
+    # Generate deterministic cache key
+    safe_hash = hashlib.sha256(f"{title}_{doi}_{paper_id}".encode("utf-8")).hexdigest()[:16]
+    clean_slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', title)[:60].strip('_') or "paper"
+    cached_pdf_path = VERIFIED_CACHE_DIR / f"{safe_hash}.pdf"
+
+    # Fast path: already verified & cached
+    if cached_pdf_path.exists() and cached_pdf_path.stat().st_size > 2000:
+        try:
+            reader = PdfReader(str(cached_pdf_path))
+            num_pages = len(reader.pages)
+            if num_pages > 0:
+                first_page_text = reader.pages[0].extract_text() or ""
+                if len(first_page_text.strip()) > 30:
+                    return {
+                        "valid": True,
+                        "readable": True,
+                        "pages": num_pages,
+                        "verified_id": safe_hash,
+                        "title": title,
+                        "filename": f"{clean_slug}.pdf",
+                        "size_bytes": cached_pdf_path.stat().st_size,
+                        "preview": first_page_text.strip()[:240],
+                        "source": source
+                    }
+        except Exception:
+            pass
+
+    content = None
+
+    # Step 1: ScholarAPI direct fetch if source is ScholarAPI or scholar_id exists
+    if (scholar_id or source == "ScholarAPI.net" or (pdf_url and "scholarapi.net" in pdf_url)) and custom_scholar_key:
+        sid = scholar_id or paper_id.replace("scholarapi_", "").replace("scholarapi-", "")
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                r = await client.get(
+                    f"https://scholarapi.net/api/v1/pdf/{sid}",
+                    headers={"X-API-Key": custom_scholar_key}
+                )
+                if r.status_code == 200 and r.content.startswith(b"%PDF"):
+                    content = r.content
+        except Exception:
+            pass
+
+    # Step 2: Direct HTTP/HTTPS download if pdf_url available
+    if not content and pdf_url:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/pdf,application/octet-stream,*/*"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=18.0, follow_redirects=True) as client:
+                r = await client.get(pdf_url, headers=headers)
+                if r.status_code == 200 and r.content.startswith(b"%PDF"):
+                    content = r.content
+        except Exception:
+            pass
+
+    # Step 3: Unpaywall DOI Open Access resolution
+    if not content and doi and not doi.startswith("#"):
+        clean_doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi)
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                unp_r = await client.get(f"https://api.unpaywall.org/v2/{clean_doi}?email=verifier@claim-mapper.org")
+                if unp_r.status_code == 200:
+                    unp_data = unp_r.json()
+                    oa_url = unp_data.get("best_oa_location", {}).get("url_for_pdf")
+                    if oa_url:
+                        pdf_resp = await client.get(oa_url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+                        if pdf_resp.status_code == 200 and pdf_resp.content.startswith(b"%PDF"):
+                            content = pdf_resp.content
+        except Exception:
+            pass
+
+    # Step 4: ScraperAPI Proxy fallback for Google Scholar or paywalled publisher links
+    if not content and pdf_url and custom_scraper_key:
+        scraper_url = f"https://api.scraperapi.com/?api_key={custom_scraper_key}&url={pdf_url}"
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                r = await client.get(scraper_url)
+                if r.status_code == 200 and r.content.startswith(b"%PDF"):
+                    content = r.content
+        except Exception:
+            pass
+
+    # If all download channels failed
+    if not content:
+        return {
+            "valid": False,
+            "readable": False,
+            "reason": "Download failed or paywalled (no open PDF stream accessible)"
+        }
+
+    # Step 5: Rigorous Readability & Text Extraction Verification
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        total_pages = len(reader.pages)
+        if total_pages == 0:
+            return {"valid": False, "readable": False, "reason": "Corrupt PDF (0 pages)"}
+
+        # Check for extracted text across initial pages
+        total_text = ""
+        for page in reader.pages[:min(total_pages, 5)]:
+            extracted = page.extract_text() or ""
+            total_text += " " + extracted.strip()
+
+        clean_text = total_text.strip()
+        if len(clean_text) < 100:
+            return {
+                "valid": False,
+                "readable": False,
+                "reason": "Scanned or image-only PDF (no extractable text layer)"
+            }
+
+        # Save to verified cache
+        cached_pdf_path.write_bytes(content)
+
+        return {
+            "valid": True,
+            "readable": True,
+            "pages": total_pages,
+            "verified_id": safe_hash,
+            "title": title,
+            "filename": f"{clean_slug}.pdf",
+            "size_bytes": len(content),
+            "preview": clean_text[:240],
+            "source": source
+        }
+    except Exception as e:
+        return {
+            "valid": False,
+            "readable": False,
+            "reason": f"PDF parse error: {str(e)}"
+        }
+
+
+@router.post("/crawler/ingest-verified/{verified_id}", response_model=PaperResponse)
+def ingest_verified_paper(
+    verified_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Instantly ingests an already downloaded and verified PDF into the knowledge graph.
+    Extracts text, metadata, claims, evidence, and cross-paper relations.
+    """
+    cached_path = VERIFIED_CACHE_DIR / f"{verified_id}.pdf"
+    if not cached_path.exists():
+        raise HTTPException(status_code=404, detail="Verified paper file not found or expired from cache.")
+
+    paper_id = f"paper_{verified_id}"
+    existing = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+    if existing:
+        claims_cnt = db.query(Claim).filter(Claim.paper_id == existing.id).count()
+        return {
+            "id": existing.id,
+            "paper_id": existing.paper_id,
+            "title": existing.title,
+            "authors": existing.authors,
+            "year": existing.year,
+            "doi": existing.doi,
+            "abstract": existing.abstract,
+            "file_path": existing.file_path,
+            "processing_status": existing.processing_status,
+            "error_message": existing.error_message,
+            "created_at": existing.created_at,
+            "claims_count": claims_cnt
+        }
+
+    # Copy to permanent uploads directory
+    target_filename = f"verified_{verified_id}_{cached_path.name}"
+    dest_path = UPLOADS_DIR / target_filename
+    if not dest_path.exists():
+        shutil.copyfile(str(cached_path), str(dest_path))
+
+    paper = Paper(
+        paper_id=paper_id,
+        title=cached_path.stem.replace("_", " ").title(),
+        file_path=str(dest_path),
+        processing_status="processing"
+    )
+    try:
+        db.add(paper)
+        db.commit()
+        db.refresh(paper)
+    except Exception:
+        db.rollback()
+        # Handle concurrent insertion race condition: return existing paper
+        existing = db.query(Paper).filter(Paper.paper_id == paper_id).first()
+        if existing:
+            claims_cnt = db.query(Claim).filter(Claim.paper_id == existing.id).count()
+            return {
+                "id": existing.id,
+                "paper_id": existing.paper_id,
+                "title": existing.title,
+                "authors": existing.authors,
+                "year": existing.year,
+                "doi": existing.doi,
+                "abstract": existing.abstract,
+                "file_path": existing.file_path,
+                "processing_status": existing.processing_status,
+                "error_message": existing.error_message,
+                "created_at": existing.created_at,
+                "claims_count": claims_cnt
+            }
+        raise
+
+    # Dispatch extraction and relation inference in background for immediate responsiveness
+    background_tasks.add_task(process_paper_file, paper.id, str(dest_path))
+
+    return {
+        "id": paper.id,
+        "paper_id": paper.paper_id,
+        "title": paper.title,
+        "authors": paper.authors,
+        "year": paper.year,
+        "doi": paper.doi,
+        "abstract": paper.abstract,
+        "file_path": paper.file_path,
+        "processing_status": paper.processing_status,
+        "error_message": paper.error_message,
+        "created_at": paper.created_at,
+        "claims_count": 0
+    }
+
+
+@router.get("/crawler/download-verified/{verified_id}")
+def download_verified_file(verified_id: str):
+    """
+    Directly downloads the confirmed readable PDF to the browser.
+    """
+    cached_path = VERIFIED_CACHE_DIR / f"{verified_id}.pdf"
+    if not cached_path.exists():
+        raise HTTPException(status_code=404, detail="Verified PDF not found.")
+
+    return FileResponse(
+        path=str(cached_path),
+        media_type="application/pdf",
+        filename=f"verified_{verified_id}.pdf"
+    )
+
+
+# -------------------------------------------------------------
 # 14. Gemini Claim Searcher (RAG)
 # -------------------------------------------------------------
 @router.post("/claims/search", response_model=ClaimSearchResponse)
