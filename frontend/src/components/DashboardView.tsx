@@ -38,7 +38,7 @@ export const DashboardView: React.FC<Props> = ({ stats, onNavigate, onResetCorpu
                 Smart Literature Claim Mapper
               </h1>
               <span className="badge badge-supports" style={{ fontSize: '0.72rem' }}>
-                <Check size={12} strokeWidth={2.5} /> AI Engine Live
+                <Check size={12} strokeWidth={2.5} /> Active Corpus
               </span>
             </div>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '640px', lineHeight: 1.55 }}>
