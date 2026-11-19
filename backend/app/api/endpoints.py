@@ -800,10 +800,31 @@ def create_annotation(payload: AnnotationCreate, db: Session = Depends(get_db)):
     if payload.user_action not in valid_actions:
         raise HTTPException(status_code=400, detail=f"Invalid user_action. Must be one of {valid_actions}.")
 
-    if payload.target_type == "claim" and payload.user_action == "correct" and payload.corrected_value:
+    # Verify target existence to prevent dangling state
+    if payload.target_type == "claim":
         claim = db.query(Claim).filter(Claim.claim_id == payload.target_id).first()
-        if claim:
+        if not claim and payload.target_id.isdigit():
+            claim = db.query(Claim).filter(Claim.id == int(payload.target_id)).first()
+        if not claim:
+            raise HTTPException(status_code=404, detail=f"Claim '{payload.target_id}' not found.")
+        
+        if payload.user_action == "correct" and payload.corrected_value:
             claim.normalized_text = payload.corrected_value
+        elif payload.user_action == "reject":
+            claim.confidence = 0.0
+
+    elif payload.target_type == "relation":
+        rel = db.query(ClaimRelation).filter(ClaimRelation.relation_id == payload.target_id).first()
+        if not rel and payload.target_id.isdigit():
+            rel = db.query(ClaimRelation).filter(ClaimRelation.id == int(payload.target_id)).first()
+        if not rel:
+            raise HTTPException(status_code=404, detail=f"Relation '{payload.target_id}' not found.")
+        
+        if payload.user_action == "correct" and payload.corrected_value:
+            if payload.corrected_value.upper() in ["SUPPORTS", "CONTRADICTS", "EXTENDS"]:
+                rel.relation_type = payload.corrected_value.upper()
+        elif payload.user_action == "reject":
+            rel.confidence = 0.0
 
     annotation = Annotation(
         annotation_id=f"ann_{uuid.uuid4().hex[:10]}",

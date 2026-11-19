@@ -143,7 +143,8 @@ class GraphService:
             src_node_id = f"claim_{r.source_claim_id}"
             tgt_node_id = f"claim_{r.target_claim_id}"
 
-            if r.source_claim_id in claim_id_map and r.target_claim_id in claim_id_map:
+            # Strict Invariant: both endpoints must be active in the rendered nodes list
+            if src_node_id in active_node_ids and tgt_node_id in active_node_ids:
                 src_c = claim_id_map.get(r.source_claim_id)
                 tgt_c = claim_id_map.get(r.target_claim_id)
                 if not src_c or not tgt_c:
@@ -193,4 +194,11 @@ class GraphService:
                         "data": {"metadata": cit.citation_metadata}
                     })
 
-        return {"nodes": nodes, "edges": edges}
+        # Final structural invariant filter: eliminate any dangling edges
+        final_node_ids = {n["id"] for n in nodes}
+        valid_edges = [
+            e for e in edges
+            if e["source"] in final_node_ids and e["target"] in final_node_ids
+        ]
+
+        return {"nodes": nodes, "edges": valid_edges}
