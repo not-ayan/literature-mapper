@@ -50,3 +50,29 @@ def test_dashboard_stats():
     assert "total_papers" in stats
     assert "total_claims" in stats
 
+def test_claims_list_and_search():
+    res = client.get("/api/claims?query=attention")
+    assert res.status_code == 200
+    claims = res.json()
+    assert isinstance(claims, list)
+
+def test_conflicts_detection():
+    res = client.get("/api/conflicts")
+    assert res.status_code == 200
+    conflicts = res.json()
+    assert isinstance(conflicts, list)
+
+def test_graph_endpoint():
+    res = client.get("/api/graph")
+    assert res.status_code == 200
+    graph = res.json()
+    assert "nodes" in graph
+    assert "edges" in graph
+
+def test_qa_endpoint():
+    payload = {"question": "Does RAG eliminate hallucination?", "top_k": 3}
+    res = client.post("/api/qa", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert "answer" in data
+    assert "provenance_sources" in data
