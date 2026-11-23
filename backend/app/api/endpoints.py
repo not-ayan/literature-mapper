@@ -132,11 +132,11 @@ def process_paper_file(paper_db_id: int, file_path: str):
         if not paper:
             return
 
-        paper.title = extracted["title"]
-        paper.authors = extracted["authors"]
-        paper.year = extracted["year"]
-        paper.doi = extracted["doi"]
-        paper.abstract = extracted["abstract"]
+        paper.title = str(extracted["title"])[:500] if extracted.get("title") else (paper.title or "Untitled")
+        paper.authors = str(extracted["authors"])[:500] if extracted.get("authors") else "Unknown Authors"
+        paper.year = extracted.get("year") or 2024
+        paper.doi = str(extracted["doi"])[:120] if extracted.get("doi") else None
+        paper.abstract = extracted.get("abstract") or ""
 
         # Step 2: Claim, Concept, and Evidence extraction
         analysis = ClaimExtractor.extract_claims_and_evidence(
@@ -1155,6 +1155,12 @@ def ingest_verified_paper(
     existing = db.query(Paper).filter(Paper.paper_id == paper_id).first()
     if existing:
         claims_cnt = db.query(Claim).filter(Claim.paper_id == existing.id).count()
+        # If paper failed or was never extracted, re-trigger processing
+        if existing.processing_status == "failed" or (existing.processing_status != "processing" and claims_cnt == 0):
+            existing.processing_status = "processing"
+            existing.error_message = None
+            db.commit()
+            background_tasks.add_task(process_paper_file, existing.id, existing.file_path)
         return {
             "id": existing.id,
             "paper_id": existing.paper_id,

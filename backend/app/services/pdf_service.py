@@ -26,6 +26,8 @@ class PDFService:
                 page_texts.append({"page": idx + 1, "text": clean_page_text})
 
             full_text = "\n\n".join(raw_text_parts)
+            if len(full_text.strip()) < 30:
+                raise ValueError("PDF contains no readable text layer (may be a scanned image or protected document).")
 
             # Metadata extraction from PDF document info
             meta = reader.metadata or {}
