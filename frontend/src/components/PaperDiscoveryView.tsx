@@ -11,6 +11,7 @@ import {
 interface Props {
   onUploadToCorpus: (file: File) => Promise<void>;
   onNavigateToCorpus: () => void;
+  onCorpusUpdated?: () => void;
   initialQuery?: string;
 }
 
@@ -22,6 +23,7 @@ interface LogEntry {
 export const PaperDiscoveryView: React.FC<Props> = ({
   onUploadToCorpus,
   onNavigateToCorpus,
+  onCorpusUpdated,
   initialQuery = ''
 }) => {
   const [query, setQuery] = useState(initialQuery);
@@ -271,6 +273,7 @@ export const PaperDiscoveryView: React.FC<Props> = ({
         await api.ingestVerifiedPaper(paper.verified_id);
         setActionStatuses(prev => ({ ...prev, [paperKey]: 'completed' }));
         setLogs(prev => [...prev, { text: `[Ingestion Pipeline] Successfully ingested "${paper.title}"! Claims and evidence extracted into graph.`, isGreen: true }]);
+        if (onCorpusUpdated) onCorpusUpdated();
         return;
       }
 
@@ -325,6 +328,7 @@ export const PaperDiscoveryView: React.FC<Props> = ({
     }
 
     setBatchIngesting(false);
+    if (onCorpusUpdated) onCorpusUpdated();
     setLogs(prev => [...prev, { text: `[Batch Ingestion] Completed! Ingested ${ingestedCount} papers into corpus.`, isGreen: true }]);
   };
 

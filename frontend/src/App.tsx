@@ -57,6 +57,18 @@ export const App: React.FC = () => {
     loadAllData();
   }, []);
 
+  // Live polling while any paper is undergoing background ingestion and relation inference
+  useEffect(() => {
+    const isProcessing = papers.some(p => p.processing_status === 'processing');
+    if (!isProcessing) return;
+
+    const interval = setInterval(() => {
+      loadAllData();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [papers]);
+
   const loadAllData = async () => {
     try {
       const [s, p, c, g, conf, gp] = await Promise.all([
@@ -386,6 +398,7 @@ export const App: React.FC = () => {
             <PaperDiscoveryView 
               onUploadToCorpus={handleUploadPaper}
               onNavigateToCorpus={() => setActiveTab('papers')}
+              onCorpusUpdated={loadAllData}
               initialQuery={discoveryQuery}
             />
           )}
