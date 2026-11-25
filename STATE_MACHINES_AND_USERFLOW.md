@@ -364,6 +364,30 @@ This document provides a formal, comprehensive mapping of:
 
 ---
 
+### Issue 5: Ingestion State Synchronization & Async Background Polling (Priority: P0 - Critical)
+
+#### Bug 5.1: Missing Frontend Polling on Background Ingestion
+- **Code Location:** `frontend/src/App.tsx`, `frontend/src/components/PaperManagerView.tsx`
+- **Defect Description:** When `uploadPaper` or `ingestVerifiedPaper` returns, FastAPI background worker processes the PDF asynchronously. The initial response has `processing_status: 'processing'` and 0 claims. Because the frontend never polled after upload, the UI remained frozen in `'processing'` with 0 claims indefinitely until a manual browser refresh.
+- **Fix:** Added an active `useEffect` poller in `App.tsx` that detects when any paper has `processing_status === 'processing'` and re-fetches every 2 seconds, terminating automatically as soon as all papers settle into `completed` or `failed`.
+
+#### Bug 5.2: Ingestion from PaperDiscoveryView Bypassed Corpus State Refresh
+- **Code Location:** `frontend/src/components/PaperDiscoveryView.tsx` (`handleDownloadAndIngest`, `handleBatchIngestAll`)
+- **Defect Description:** Pre-verified online papers ingested via `api.ingestVerifiedPaper(verified_id)` did not notify `App.tsx`, leaving the document library unaware of the newly ingested paper.
+- **Fix:** Added `onCorpusUpdated?: () => void` prop and invoked it immediately following single and batch verified paper ingestion.
+
+#### Bug 5.3: Ingest Verified Paper Idempotency Lock on Previous Failure
+- **Code Location:** `backend/app/api/endpoints.py` (`ingest_verified_paper`)
+- **Defect Description:** If an earlier attempt at ingesting a paper failed, subsequent clicks on "Ingest" returned the existing failed record without re-triggering background extraction.
+- **Fix:** If an existing record exists with status `failed` or 0 claims, reset status to `processing` and re-dispatch `process_paper_file`.
+
+#### Bug 5.4: Unprotected Empty / Scanned PDF Ingestion
+- **Code Location:** `backend/app/services/pdf_service.py`
+- **Defect Description:** Pure image/scanned PDFs with no extractable text layer silently succeeded with 0 claims and no error message.
+- **Fix:** Enforced a minimum text threshold ($>30$ characters) in `PDFService.extract_text_and_metadata`, cleanly raising a descriptive error when a scanned image or protected document without OCR is supplied.
+
+---
+
 # Part 3: Implemented Code Fixes & Regression Verification
 
 ### 1. Code Fix: Atomic Completion & Concurrency Guard in `endpoints.py`
