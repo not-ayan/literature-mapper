@@ -1,16 +1,130 @@
-# Python & Node initial ignores
+# ==============================================================================
+# Git Ignore - Smart Literature Claim Mapper
+# Excludes local environments, caches, builds, databases, secrets, course reports,
+# and non-site artifacts.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment Variables & Secrets (CRITICAL)
+# ------------------------------------------------------------------------------
 .env
+.env.*
 *.env
 !*.env.example
+
+# ------------------------------------------------------------------------------
+# 2. Python Virtual Environments & Packages
+# ------------------------------------------------------------------------------
 .venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ------------------------------------------------------------------------------
+# 3. Python Bytecode, Caching & Testing Artifacts
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# ------------------------------------------------------------------------------
+# 4. Node.js & Frontend Builds
+# ------------------------------------------------------------------------------
 node_modules/
 **/node_modules/
 frontend/dist/
+**/dist/
+dist-ssr/
+frontend/.vite/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 5. Databases, Local Ingestion Storage & Cached Files
+# ------------------------------------------------------------------------------
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
 *.sqlite3
+data/
 backend/data/
+backend/claims_mapper.db
+
+# ------------------------------------------------------------------------------
+# 6. Assignment Reports, Word Docs, Lock Files & Sample PDFs (Non-Site Artifacts)
+# ------------------------------------------------------------------------------
+*.docx
+~$*
+~$*.docx
+report_assets/
+results/
+*.pdf
+se.pdf
+generate*py
+# ------------------------------------------------------------------------------
+# 7. Agent Artifacts
+# ------------------------------------------------------------------------------
+.agents/
+
+# ------------------------------------------------------------------------------
+# 8. Operating System & Editor Files
+# ------------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+
+# IDEs and Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.log
